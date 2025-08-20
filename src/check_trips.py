@@ -55,8 +55,9 @@ def format_trip(trip):
     arr_time = datetime.fromisoformat(arrival.replace("Z", "+00:00")).strftime("%H:%M")
 
     duration = trip["plannedDurationInMinutes"]
+    platform = trip["legs"][0]["origin"].get("plannedTrack", "?")
 
-    return f"{dep_time} → {arr_time} ({duration}min, {transfers} transfers)"
+    return f"{dep_time} → {arr_time} (platform {platform}, {duration}min, {transfers} transfers)"
 
 
 def send_telegram_message(api_key, chat_id, message):

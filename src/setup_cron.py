@@ -44,6 +44,8 @@ def setup_cron_jobs():
     config_path = os.path.abspath("config.json")
     python_path = sys.executable
 
+    pythonpath = os.environ.get("PYTHONPATH", "")
+
     cron = CronTab(user=True)
     cron.remove_all(comment="ns-commute")
 
@@ -64,7 +66,7 @@ def setup_cron_jobs():
 
             cron_time = minutes_to_cron_time(notification_minutes)
 
-            command = f"{python_path} {script_path} {departure_station} {arrival_station} {departure_time} {config_path}"
+            command = f"PYTHONPATH={pythonpath} {python_path} {script_path} {departure_station} {arrival_station} {departure_time} {config_path}"
 
             job = cron.new(command=command, comment="ns-commute")
             job.setall(cron_time + " * * *")
