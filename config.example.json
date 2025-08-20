@@ -1,0 +1,19 @@
+{
+  "telegram_api_key": "YOUR_TELEGRAM_BOT_TOKEN",
+  "telegram_chat_id": "YOUR_TELEGRAM_CHAT_ID",
+  "ns_api_key": "YOUR_NS_API_KEY",
+  "routes": [
+    {
+      "departure_station": "Asd",
+      "arrival_station": "Rtd",
+      "departure_time": "08:30",
+      "cron_offsets": ["15m", "5m"]
+    },
+    {
+      "departure_station": "Rtd",
+      "arrival_station": "Asd",
+      "departure_time": "17:45",
+      "cron_offsets": ["1h", "20m", "10m"]
+    }
+  ]
+}
