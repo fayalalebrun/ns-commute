@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
 import sys
 import json
+import os
 import requests
 from datetime import datetime, timedelta
 
 
 def load_config(config_path="config.json"):
+    # Try environment variables first (for systemd services)
+    if all(
+        k in os.environ for k in ["TELEGRAM_API_KEY", "TELEGRAM_CHAT_ID", "NS_API_KEY"]
+    ):
+        return {
+            "telegram_api_key": os.environ["TELEGRAM_API_KEY"],
+            "telegram_chat_id": os.environ["TELEGRAM_CHAT_ID"],
+            "ns_api_key": os.environ["NS_API_KEY"],
+        }
+
+    # Fall back to config file
     with open(config_path, "r") as f:
         return json.load(f)
 
