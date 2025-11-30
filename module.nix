@@ -5,6 +5,30 @@ with lib;
 let
   cfg = config.services.ns-commute;
 
+  # All days of the week (systemd format)
+  allDays = [ "Mon" "Tue" "Wed" "Thu" "Fri" "Sat" "Sun" ];
+
+  # Get previous day in the week
+  prevDay = day: {
+    "Mon" = "Sun";
+    "Tue" = "Mon";
+    "Wed" = "Tue";
+    "Thu" = "Wed";
+    "Fri" = "Thu";
+    "Sat" = "Fri";
+    "Sun" = "Sat";
+  }.${day};
+
+  # Calculate enabled notification days based on departure days and wraparound
+  # When notification wraps to previous day, map enabled departure days to their previous days
+  getEnabledNotificationDays = { disabledDays, wrapsToYesterday }:
+    let
+      enabledDepartureDays = lib.filter (d: !(builtins.elem d disabledDays)) allDays;
+    in
+    if wrapsToYesterday
+    then map prevDay enabledDepartureDays
+    else enabledDepartureDays;
+
   # Remove leading zeros from a string to avoid octal interpretation
   stripLeadingZeros = str:
     let
@@ -49,13 +73,18 @@ let
     "${toString mins} ${toString hours}";
 
   # Generate systemd timer calendar expression from minutes
-  minutesToCalendar = totalMinutes:
+  # enabledDays: optional list of days to run on (null means all days)
+  minutesToCalendar = { totalMinutes, enabledDays ? null }:
     let
       adjustedMinutes = if totalMinutes < 0 then totalMinutes + (24 * 60) else totalMinutes;
       hours = adjustedMinutes / 60;
       mins = lib.mod adjustedMinutes 60;
+      timeStr = "${lib.fixedWidthString 2 "0" (toString hours)}:${lib.fixedWidthString 2 "0" (toString mins)}:00";
+      dayStr = if enabledDays == null || enabledDays == allDays
+               then "*-*-*"
+               else "${lib.concatStringsSep "," enabledDays} *-*-*";
     in
-    "*-*-* ${lib.fixedWidthString 2 "0" (toString hours)}:${lib.fixedWidthString 2 "0" (toString mins)}:00";
+    "${dayStr} ${timeStr}";
 
   # Generate unique name for a service
   makeServiceName = route: offset:
@@ -69,13 +98,17 @@ let
   # Generate all route configurations
   routeConfigs = lib.flatten (
     map (route:
-      map (offset: {
-        inherit route offset;
-        serviceName = makeServiceName route offset;
-        departureMinutes = timeToMinutes route.departureTime;
-        offsetMinutes = parseOffset offset;
-        notificationMinutes = timeToMinutes route.departureTime - parseOffset offset;
-      }) route.cronOffsets
+      map (offset:
+        let
+          notificationMinutes = timeToMinutes route.departureTime - parseOffset offset;
+        in {
+          inherit route offset;
+          serviceName = makeServiceName route offset;
+          departureMinutes = timeToMinutes route.departureTime;
+          offsetMinutes = parseOffset offset;
+          inherit notificationMinutes;
+          wrapsToYesterday = notificationMinutes < 0;
+        }) route.cronOffsets
     ) cfg.routes
   );
 
@@ -206,6 +239,13 @@ in
             example = [ "15m" "5m" ];
             description = "List of time offsets before departure to send notifications (e.g., '15m', '1h', '1h30m')";
           };
+
+          disabledDays = mkOption {
+            type = types.listOf (types.enum [ "Mon" "Tue" "Wed" "Thu" "Fri" "Sat" "Sun" ]);
+            default = [ ];
+            example = [ "Sat" "Sun" ];
+            description = "Days of the week to skip notifications. Based on departure day, not notification day.";
+          };
         };
       });
       default = [ ];
@@ -263,7 +303,13 @@ in
         wantedBy = [ "timers.target" ];
 
         timerConfig = {
-          OnCalendar = minutesToCalendar rc.notificationMinutes;
+          OnCalendar = minutesToCalendar {
+            totalMinutes = rc.notificationMinutes;
+            enabledDays = getEnabledNotificationDays {
+              disabledDays = rc.route.disabledDays;
+              wrapsToYesterday = rc.wrapsToYesterday;
+            };
+          };
           Persistent = true;
         };
       }) routeConfigs
