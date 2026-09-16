@@ -273,6 +273,7 @@ in
           Type = "oneshot";
           User = cfg.user;
           Group = cfg.user;
+          StateDirectory = "ns-commute";
 
           # Load secrets via systemd credentials (only for file-based secrets)
           LoadCredential =
