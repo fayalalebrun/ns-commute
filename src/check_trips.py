@@ -120,18 +120,7 @@ def station_identity(stop):
 
 
 def leg_identity(leg):
-    product = leg.get("product", {})
-    service = (
-        product.get("number")
-        or product.get("displayName")
-        or leg.get("trainNumber")
-        or product.get("longCategoryName", "")
-    )
-    return [
-        station_identity(leg["origin"]),
-        station_identity(leg["destination"]),
-        service,
-    ]
+    return [station_identity(leg["origin"]), station_identity(leg["destination"])]
 
 
 def trip_signature(trip):

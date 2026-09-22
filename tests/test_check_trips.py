@@ -66,7 +66,7 @@ class CheckTripsTests(unittest.TestCase):
                 previous, check_trips.trip_signature(trip(departure="08:40", arrival="09:40"))
             )
         )
-        self.assertTrue(
+        self.assertFalse(
             check_trips.route_changed(previous, check_trips.trip_signature(trip(number="2")))
         )
         self.assertTrue(
@@ -74,6 +74,12 @@ class CheckTripsTests(unittest.TestCase):
                 previous, check_trips.trip_signature(trip(departure="08:41", arrival="09:41"))
             )
         )
+
+    def test_route_change_detects_a_different_transfer_station(self):
+        previous = check_trips.trip_signature(trip())
+        changed = trip()
+        changed["legs"][0]["destination"]["stationCode"] = "Ut"
+        self.assertTrue(check_trips.route_changed(previous, check_trips.trip_signature(changed)))
 
     def test_main_warns_and_sends_available_alternatives(self):
         usual = trip(cancelled=True)
@@ -168,7 +174,7 @@ class CheckTripsTests(unittest.TestCase):
                     ), patch.object(
                         check_trips,
                         "get_trips",
-                        return_value={"trips": [trip(number="2")]},
+                        return_value={"trips": [trip(departure="08:41", arrival="09:41")]},
                     ), patch.object(
                         check_trips,
                         "send_telegram_message",
