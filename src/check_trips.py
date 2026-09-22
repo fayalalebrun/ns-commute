@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 import hashlib
 import json
+import logging
 import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import requests
+
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
 
 def load_config(config_path="config.json"):
@@ -51,10 +56,10 @@ def get_trips(api_key, from_station, to_station, departure_time):
         "dateTime": iso_datetime,
     }
 
+    logger.info("requesting trips route=%s→%s departure=%s", from_station, to_station, iso_datetime)
     response = requests.get(url, headers=headers, params=params)
-    print(f"Request URL: {response.url}")
     if response.status_code != 200:
-        print(f"Error response: {response.text}")
+        logger.error("NS API response status=%s body=%s", response.status_code, response.text)
     response.raise_for_status()
     return response.json()
 
@@ -173,8 +178,11 @@ def load_baseline(from_station, to_station, departure_time):
     path = baseline_path(from_station, to_station, departure_time)
     try:
         with path.open() as state_file:
-            return json.load(state_file)
+            baseline = json.load(state_file)
+            logger.info("loaded baseline route=%s→%s time=%s date=%s", from_station, to_station, departure_time, baseline["date"])
+            return baseline
     except FileNotFoundError:
+        logger.info("no baseline route=%s→%s time=%s", from_station, to_station, departure_time)
         return None
 
 
@@ -185,6 +193,7 @@ def save_baseline(from_station, to_station, departure_time, date, signature):
     with temporary_path.open("w") as state_file:
         json.dump({"date": date, "signature": signature}, state_file)
     temporary_path.replace(path)
+    logger.info("saved baseline route=%s→%s time=%s date=%s", from_station, to_station, departure_time, date)
 
 
 def format_trip(trip):
@@ -223,9 +232,8 @@ def main():
     departure_time = sys.argv[3]
     config_path = sys.argv[4] if len(sys.argv) == 5 else "config.json"
 
-    config = load_config(config_path)
-
     try:
+        config = load_config(config_path)
         trips_data = get_trips(
             config["ns_api_key"], from_station, to_station, departure_time
         )
@@ -268,6 +276,17 @@ def main():
             and baseline["date"] < usual_date
             and route_changed(baseline["signature"], usual_signature)
         )
+        logger.info(
+            "route decision route=%s→%s time=%s trips=%d usual=%s unavailable=%s changed=%s baseline_date=%s",
+            from_station,
+            to_station,
+            departure_time,
+            len(filtered_trips),
+            format_trip(usual_trip),
+            route_unavailable,
+            route_changed_since_previous_day,
+            baseline["date"] if baseline else None,
+        )
 
         if route_unavailable:
             message_lines.append(
@@ -290,17 +309,32 @@ def main():
         )
         if route_unavailable or route_changed_since_previous_day:
             message = "\n".join(message_lines)
+            logger.info(
+                "sending alert route=%s→%s message=%r",
+                from_station,
+                to_station,
+                message,
+            )
             send_telegram_message(
                 config["telegram_api_key"], config["telegram_chat_id"], message
             )
-            print(f"Sent notification for {from_station} → {to_station}")
+            logger.info("sent alert route=%s→%s", from_station, to_station)
+        else:
+            logger.info("no alert route=%s→%s", from_station, to_station)
 
-    except Exception as e:
-        error_msg = f"Error checking {from_station} → {to_station}: {str(e)}"
-        send_telegram_message(
-            config["telegram_api_key"], config["telegram_chat_id"], error_msg
-        )
-        print(error_msg)
+    except Exception:
+        logger.exception("error checking route=%s→%s", from_station, to_station)
+        error_msg = f"Error checking {from_station} → {to_station}"
+        try:
+            config
+        except UnboundLocalError:
+            return
+        try:
+            send_telegram_message(
+                config["telegram_api_key"], config["telegram_chat_id"], error_msg
+            )
+        except Exception:
+            logger.exception("failed to send error alert route=%s→%s", from_station, to_station)
 
 
 if __name__ == "__main__":

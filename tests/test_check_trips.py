@@ -105,6 +105,27 @@ class CheckTripsTests(unittest.TestCase):
         self.assertIn("08:35 → 09:20", messages[0])
         self.assertEqual(messages[0].count("08:30 → 09:30"), 1)
 
+    def test_main_logs_the_decision_when_an_alert_is_suppressed(self):
+        with tempfile.TemporaryDirectory() as state_dir:
+            with patch.dict(os.environ, {"NS_COMMUTE_STATE_DIR": state_dir}):
+                with patch.object(sys, "argv", ["check_trips.py", "Asd", "Rtd", "08:30"]):
+                    with patch.object(
+                        check_trips,
+                        "load_config",
+                        return_value={
+                            "ns_api_key": "key",
+                            "telegram_api_key": "bot",
+                            "telegram_chat_id": "chat",
+                        },
+                    ), patch.object(
+                        check_trips, "get_trips", return_value={"trips": [trip()]}
+                    ), patch.object(check_trips, "send_telegram_message"):
+                        with self.assertLogs(check_trips.logger, "INFO") as logs:
+                            check_trips.main()
+
+        self.assertIn("route decision route=Asd→Rtd", "\n".join(logs.output))
+        self.assertIn("no alert route=Asd→Rtd", "\n".join(logs.output))
+
     def test_main_does_not_notify_for_an_unchanged_route(self):
         messages = []
         with tempfile.TemporaryDirectory() as state_dir:
