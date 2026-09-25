@@ -20,14 +20,15 @@ def trip(
     actual_departure=None,
     cancelled=False,
     number="1",
+    date="2025-01-02",
 ):
     origin = {
-        "plannedDateTime": f"2025-01-02T{departure}:00+01:00",
+        "plannedDateTime": f"{date}T{departure}:00+01:00",
         "plannedTrack": "1",
         "stationCode": "Asd",
     }
     if actual_departure:
-        origin["actualDateTime"] = f"2025-01-02T{actual_departure}:00+01:00"
+        origin["actualDateTime"] = f"{date}T{actual_departure}:00+01:00"
     return {
         "cancelled": cancelled,
         "plannedDurationInMinutes": 60,
@@ -35,7 +36,7 @@ def trip(
             {
                 "origin": origin,
                 "destination": {
-                    "plannedDateTime": f"2025-01-02T{arrival}:00+01:00",
+                    "plannedDateTime": f"{date}T{arrival}:00+01:00",
                     "stationCode": "Rtd",
                 },
                 "product": {"number": number},
@@ -68,6 +69,12 @@ class CheckTripsTests(unittest.TestCase):
         )
         self.assertFalse(
             check_trips.route_changed(previous, check_trips.trip_signature(trip(number="2")))
+        )
+        self.assertFalse(
+            check_trips.route_changed(
+                previous,
+                check_trips.trip_signature(trip(date="2025-01-03")),
+            )
         )
         self.assertTrue(
             check_trips.route_changed(
@@ -131,6 +138,39 @@ class CheckTripsTests(unittest.TestCase):
 
         self.assertIn("route decision route=Asd→Rtd", "\n".join(logs.output))
         self.assertIn("no alert route=Asd→Rtd", "\n".join(logs.output))
+
+    def test_main_does_not_notify_for_an_identical_route_on_the_next_day(self):
+        messages = []
+        with tempfile.TemporaryDirectory() as state_dir:
+            with patch.dict(os.environ, {"NS_COMMUTE_STATE_DIR": state_dir}):
+                with patch.object(sys, "argv", ["check_trips.py", "Asd", "Rtd", "08:30"]):
+                    with patch.object(
+                        check_trips,
+                        "load_config",
+                        return_value={
+                            "ns_api_key": "key",
+                            "telegram_api_key": "bot",
+                            "telegram_chat_id": "chat",
+                        },
+                    ), patch.object(
+                        check_trips,
+                        "get_trips",
+                        return_value={"trips": [trip(date="2025-01-03")]},
+                    ), patch.object(
+                        check_trips,
+                        "send_telegram_message",
+                        side_effect=lambda _, __, message: messages.append(message),
+                    ):
+                        check_trips.save_baseline(
+                            "Asd",
+                            "Rtd",
+                            "08:30",
+                            "2025-01-02",
+                            check_trips.trip_signature(trip(date="2025-01-02")),
+                        )
+                        check_trips.main()
+
+        self.assertEqual(messages, [])
 
     def test_main_does_not_notify_for_an_unchanged_route(self):
         messages = []

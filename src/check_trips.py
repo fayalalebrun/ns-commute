@@ -143,7 +143,9 @@ def route_changed(previous, current):
     for field in ("departure", "arrival"):
         old = datetime.fromisoformat(previous[field])
         new = datetime.fromisoformat(current[field])
-        if abs((new - old).total_seconds()) > 10 * 60:
+        old_minutes = old.hour * 60 + old.minute
+        new_minutes = new.hour * 60 + new.minute
+        if abs(new_minutes - old_minutes) > 10:
             return True
     return False
 
